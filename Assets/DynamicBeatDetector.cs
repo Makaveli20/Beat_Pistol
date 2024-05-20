@@ -7,10 +7,12 @@ public class DynamicBeatDetector : MonoBehaviour
 {
     public GameObject targetPrefab; // Reference to the target prefab
     public Transform spawnArea; // Reference to the spawn area (use a GameObject with a BoxCollider)
-    public Vector3 spawnAreaSize = new Vector3(10f, 10f, 10f); // Size of the spawn area (x, y)
+    public Vector2 spawnAreaSize = new Vector2(10f, 10f); // Size of the spawn area (x, y)
     public float spawnCooldown = 1f; // Cooldown time between spawns
     public float targetLifetime = 3f; // Lifetime of each target
     public int maxSelfDestructs = 3; // Maximum number of self-destroyed targets before game over
+    public float minZDistance = 5f; // Minimum distance from the player on the z-axis
+    public float maxZDistance = 20f; // Maximum distance from the player on the z-axis
 
     private AudioSource audioSource;
     private float[] spectrum = new float[1024];
@@ -74,7 +76,7 @@ public class DynamicBeatDetector : MonoBehaviour
             OnBeatDetected();
         }
 
-        
+        Debug.Log($"Low Freq Max: {lowFreqMax}, Amplitude: {amplitude}, Threshold: {threshold}, Sensitivity: {sensitivity}");
     }
 
     float[] SmoothSpectrum(float[] spectrum)
@@ -164,7 +166,7 @@ public class DynamicBeatDetector : MonoBehaviour
         float halfHeight = spawnAreaSize.y / 2;
         spawnPosition.x += Random.Range(-halfWidth, halfWidth);
         spawnPosition.y += Random.Range(-halfHeight, halfHeight);
-        spawnPosition.z += Random.Range(-halfWidth, halfWidth); // Assuming z dimension is the same as x for 3D
+        spawnPosition.z = Random.Range(minZDistance, maxZDistance); // Ensure z is within the safe range
         return spawnPosition;
     }
 

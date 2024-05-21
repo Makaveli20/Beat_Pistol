@@ -85,7 +85,7 @@ public class DynamicBeatDetector : MonoBehaviour
             OnBeatDetected();
         }
 
-        Debug.Log($"Low Freq Max: {lowFreqMax}, Amplitude: {amplitude}, Threshold: {threshold}, Sensitivity: {sensitivity}");
+       // Debug.Log($"Low Freq Max: {lowFreqMax}, Amplitude: {amplitude}, Threshold: {threshold}, Sensitivity: {sensitivity}");
     }
 
     float[] PerformSTFT(float[] audioData)

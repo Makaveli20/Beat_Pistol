@@ -14,6 +14,10 @@ public class SimpleShoot : MonoBehaviour
     [Header("Settings")]
     [Tooltip("Specify time to destroy the muzzle flash object")]
     [SerializeField] private float destroyTimer = 2f;
+    [Tooltip("Raycast Range")]
+    [SerializeField] private float raycastRange = 100f; // Adjust the range as needed
+    [Tooltip("Layer Mask to ignore certain layers")]
+    [SerializeField] private LayerMask layerMask; // Add a LayerMask to specify which layers to hit
 
     public InputActionProperty shooting;
     public LineRenderer lineRenderer; // Reference to the LineRenderer component
@@ -30,8 +34,10 @@ public class SimpleShoot : MonoBehaviour
 
         if (lineRenderer == null)
             lineRenderer = GetComponent<LineRenderer>();
+
         if (shootingAudioSource == null)
             shootingAudioSource = GetComponent<AudioSource>();
+
         // Initialize the LineRenderer
         lineRenderer.positionCount = 2;
         lineRenderer.startWidth = 0.05f;
@@ -60,7 +66,7 @@ public class SimpleShoot : MonoBehaviour
 
         // Raycast to detect hits
         RaycastHit hit;
-        if (Physics.Raycast(barrelLocation.position, barrelLocation.forward, out hit))
+        if (Physics.Raycast(barrelLocation.position, barrelLocation.forward, out hit, raycastRange, ~layerMask))
         {
             if (hit.collider.CompareTag("Target"))
             {
@@ -68,6 +74,8 @@ public class SimpleShoot : MonoBehaviour
                 AddScore(10); // Add points to the score
             }
         }
+
+        // Play shooting sound
         if (shootingAudioSource)
         {
             shootingAudioSource.Play();
@@ -80,7 +88,13 @@ public class SimpleShoot : MonoBehaviour
         lineRenderer.SetPosition(0, barrelLocation.position);
 
         // Set the end position of the line to a point far forward from the barrel
-        lineRenderer.SetPosition(1, barrelLocation.position + barrelLocation.forward * 100f);
+        RaycastHit hit;
+        Vector3 endPosition = barrelLocation.position + barrelLocation.forward * raycastRange;
+        if (Physics.Raycast(barrelLocation.position, barrelLocation.forward, out hit, raycastRange, ~layerMask))
+        {
+            endPosition = hit.point;
+        }
+        lineRenderer.SetPosition(1, endPosition);
     }
 
     public void AddScore(int points)

@@ -46,8 +46,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   targetPrefab: {fileID: 2951982873633636645, guid: fe7cb8641b1897741accb3cd4cbee276, type: 3}
-  spawnArea: {fileID: 1633656529817519921}
-  spawnAreaSize: {x: 3, y: 2, z: 2}
+  spawnArea: {fileID: 0}
   spawnCooldown: 0
   targetLifetime: 3
   maxSelfDestructs: 100
@@ -61,7 +60,7 @@ AudioSource:
   m_Enabled: 1
   serializedVersion: 4
   OutputAudioMixerGroup: {fileID: 24300002, guid: 1d17f074e9d16a845aed7e2969b09ab4, type: 2}
-  m_audioClip: {fileID: 8300000, guid: 6a505abac1f05d047bd0dd362e240e32, type: 3}
+  m_audioClip: {fileID: 8300000, guid: 5ffba171d4faf374e85cde7f06cb150b, type: 3}
   m_PlayOnAwake: 1
   m_Volume: 1
   m_Pitch: 1

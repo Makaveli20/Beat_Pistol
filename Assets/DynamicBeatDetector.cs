@@ -2,18 +2,11 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using System.Linq;
-public static class MathUtility
-{
-    // Define the Hanning window function
-    public static float HanningWindow(int index, int size)
-    {
-        return 0.5f * (1 - Mathf.Cos(2 * Mathf.PI * index / (size - 1)));
-    }
-}
+
 [RequireComponent(typeof(AudioSource))]
 public class DynamicBeatDetector : MonoBehaviour
 {
-   public GameObject targetPrefab;
+    public GameObject targetPrefab;
     public BoxCollider spawnArea;
     public float spawnCooldown = 1f;
     public float targetLifetime = 3f;
@@ -31,12 +24,16 @@ public class DynamicBeatDetector : MonoBehaviour
     private float lastBeatTime;
     private float lastSpawnTime;
     private float timeBetweenBeats = 0.2f;
+    private float[] previousSpectrum;
+    private Queue<float> recentAmplitudes = new Queue<float>();
+    private int recentAmplitudeCount = 20;
 
     void Start()
     {
         audioSource = GetComponent<AudioSource>();
         audioSource.Play();
         hopSize = windowSize / 2;
+        previousSpectrum = new float[windowSize];
     }
 
     void Update()
@@ -52,29 +49,31 @@ public class DynamicBeatDetector : MonoBehaviour
         float[] audioData = new float[windowSize];
         audioSource.GetSpectrumData(audioData, 0, FFTWindow.BlackmanHarris);
 
+        // Normalize audio data
+        Normalize(audioData);
+
         float[] stftResult = PerformSTFT(audioData);
 
-        // Smooth the STFT result
-        float[] smoothedSpectrum = SmoothSpectrum(stftResult);
+        // Calculate the Spectral Flux
+        float[] spectralFlux = CalculateSpectralFlux(stftResult, previousSpectrum);
 
-        // Focus on lower frequencies (bass)
-        float lowFreqMax = 0;
-        int lowFreqEnd = smoothedSpectrum.Length / 8;
+        // Smooth the Spectral Flux
+        float[] smoothedFlux = SmoothFlux(spectralFlux);
 
-        for (int i = 0; i < lowFreqEnd; i++)
-        {
-            if (smoothedSpectrum[i] > lowFreqMax)
-            {
-                lowFreqMax = smoothedSpectrum[i];
-            }
-        }
+        // Detect peaks in the Spectral Flux
+        float amplitude = DetectPeaks(smoothedFlux);
 
-        float amplitude = lowFreqMax * sensitivity;
         amplitudeSamples.Add(amplitude);
+        recentAmplitudes.Enqueue(amplitude);
 
         if (amplitudeSamples.Count > windowSize)
         {
             amplitudeSamples.RemoveAt(0);
+        }
+
+        if (recentAmplitudes.Count > recentAmplitudeCount)
+        {
+            recentAmplitudes.Dequeue();
         }
 
         AdjustSensitivityAndThreshold();
@@ -85,7 +84,19 @@ public class DynamicBeatDetector : MonoBehaviour
             OnBeatDetected();
         }
 
-        Debug.Log($"Low Freq Max: {lowFreqMax}, Amplitude: {amplitude}, Threshold: {threshold}, Sensitivity: {sensitivity}");
+        // Update previous spectrum
+        previousSpectrum = stftResult;
+
+        Debug.Log($"Amplitude: {amplitude}, Threshold: {threshold}, Sensitivity: {sensitivity}");
+    }
+
+    void Normalize(float[] data)
+    {
+        float max = data.Max();
+        for (int i = 0; i < data.Length; i++)
+        {
+            data[i] /= max;
+        }
     }
 
     float[] PerformSTFT(float[] audioData)
@@ -145,12 +156,25 @@ public class DynamicBeatDetector : MonoBehaviour
         }
     }
 
-    float[] SmoothSpectrum(float[] spectrum)
+    float[] CalculateSpectralFlux(float[] currentSpectrum, float[] previousSpectrum)
     {
-        float[] smoothedSpectrum = new float[spectrum.Length];
+        float[] spectralFlux = new float[currentSpectrum.Length];
+
+        for (int i = 0; i < currentSpectrum.Length; i++)
+        {
+            float flux = currentSpectrum[i] - previousSpectrum[i];
+            spectralFlux[i] = Mathf.Max(0, flux);
+        }
+
+        return spectralFlux;
+    }
+
+    float[] SmoothFlux(float[] spectralFlux)
+    {
+        float[] smoothedFlux = new float[spectralFlux.Length];
         int smoothRange = 3;
 
-        for (int i = 0; i < spectrum.Length; i++)
+        for (int i = 0; i < spectralFlux.Length; i++)
         {
             float sum = 0;
             int count = 0;
@@ -158,17 +182,36 @@ public class DynamicBeatDetector : MonoBehaviour
             for (int j = -smoothRange; j <= smoothRange; j++)
             {
                 int index = i + j;
-                if (index >= 0 && index < spectrum.Length)
+                if (index >= 0 && index < spectralFlux.Length)
                 {
-                    sum += spectrum[index];
+                    sum += spectralFlux[index];
                     count++;
                 }
             }
 
-            smoothedSpectrum[i] = sum / count;
+            smoothedFlux[i] = sum / count;
         }
 
-        return smoothedSpectrum;
+        return smoothedFlux;
+    }
+
+    float DetectPeaks(float[] spectralFlux)
+    {
+        float peakThreshold = spectralFlux.Average() * 1.5f;
+        float maxPeak = 0;
+
+        for (int i = 1; i < spectralFlux.Length - 1; i++)
+        {
+            if (spectralFlux[i] > spectralFlux[i - 1] && spectralFlux[i] > spectralFlux[i + 1] && spectralFlux[i] > peakThreshold)
+            {
+                if (spectralFlux[i] > maxPeak)
+                {
+                    maxPeak = spectralFlux[i];
+                }
+            }
+        }
+
+        return maxPeak;
     }
 
     void AdjustSensitivityAndThreshold()
@@ -189,6 +232,16 @@ public class DynamicBeatDetector : MonoBehaviour
         float stdDev = Mathf.Sqrt(variance);
 
         threshold = averageAmplitude + stdDev;
+
+        // Adaptive threshold adjustment
+        if (recentAmplitudes.Count > 0)
+        {
+            float recentAverage = recentAmplitudes.Average();
+            float recentVariance = recentAmplitudes.Select(val => Mathf.Pow(val - recentAverage, 2)).Average();
+            float recentStdDev = Mathf.Sqrt(recentVariance);
+
+            threshold = recentAverage + recentStdDev;
+        }
     }
 
     void OnBeatDetected()
@@ -264,5 +317,13 @@ public class DynamicBeatDetector : MonoBehaviour
     void GameOver()
     {
         Debug.Log("Game Over!");
+    }
+}
+
+public static class MathUtility
+{
+    public static float HanningWindow(int index, int size)
+    {
+        return 0.5f * (1 - Mathf.Cos(2 * Mathf.PI * index / (size - 1)));
     }
 }

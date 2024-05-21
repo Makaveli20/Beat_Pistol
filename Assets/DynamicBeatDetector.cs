@@ -1,49 +1,65 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-
+using System.Linq;
+public static class MathUtility
+{
+    // Define the Hanning window function
+    public static float HanningWindow(int index, int size)
+    {
+        return 0.5f * (1 - Mathf.Cos(2 * Mathf.PI * index / (size - 1)));
+    }
+}
 [RequireComponent(typeof(AudioSource))]
 public class DynamicBeatDetector : MonoBehaviour
 {
-    public GameObject targetPrefab; // Reference to the target prefab
-    public BoxCollider spawnArea; // Reference to the BoxCollider defining the spawn area
-    public float spawnCooldown = 1f; // Cooldown time between spawns
-    public float targetLifetime = 3f; // Lifetime of each target
-    public int maxSelfDestructs = 3; // Maximum number of self-destroyed targets before game over
+   public GameObject targetPrefab;
+    public BoxCollider spawnArea;
+    public float spawnCooldown = 1f;
+    public float targetLifetime = 3f;
+    public int maxSelfDestructs = 3;
 
     private AudioSource audioSource;
     private float[] spectrum = new float[1024];
     private List<float> amplitudeSamples = new List<float>();
     private List<GameObject> activeTargets = new List<GameObject>();
-    private int selfDestructCount = 0; // Counter for self-destroyed targets
-    private int windowSize = 1024; // Size of the rolling window for amplitude samples
-    private float sensitivity = 100.0f; // Initial sensitivity
+    private int selfDestructCount = 0;
+    private int windowSize = 1024;
+    private int hopSize;
+    private float sensitivity = 1.5f;
     private float threshold;
     private float lastBeatTime;
     private float lastSpawnTime;
-    private float timeBetweenBeats = 0.2f; // Minimum time between beats to avoid rapid firing
+    private float timeBetweenBeats = 0.2f;
 
     void Start()
     {
         audioSource = GetComponent<AudioSource>();
-        audioSource.Play(); // Start playing the audio
+        audioSource.Play();
+        hopSize = windowSize / 2;
     }
 
     void Update()
     {
-        AnalyzeAudio(); // Continuously analyze the audio in each frame
+        if (audioSource.isPlaying)
+        {
+            AnalyzeAudio();
+        }
     }
 
     void AnalyzeAudio()
     {
-        audioSource.GetSpectrumData(spectrum, 0, FFTWindow.BlackmanHarris);
+        float[] audioData = new float[windowSize];
+        audioSource.GetSpectrumData(audioData, 0, FFTWindow.BlackmanHarris);
 
-        // Smooth the spectrum data
-        float[] smoothedSpectrum = SmoothSpectrum(spectrum);
+        float[] stftResult = PerformSTFT(audioData);
+
+        // Smooth the STFT result
+        float[] smoothedSpectrum = SmoothSpectrum(stftResult);
 
         // Focus on lower frequencies (bass)
         float lowFreqMax = 0;
-        int lowFreqEnd = spectrum.Length / 8; // Focus on the first 1/8th of the spectrum
+        int lowFreqEnd = smoothedSpectrum.Length / 8;
 
         for (int i = 0; i < lowFreqEnd; i++)
         {
@@ -53,20 +69,16 @@ public class DynamicBeatDetector : MonoBehaviour
             }
         }
 
-        // Calculate the amplitude using the initial sensitivity
         float amplitude = lowFreqMax * sensitivity;
         amplitudeSamples.Add(amplitude);
 
-        // Maintain a rolling window of amplitude samples
         if (amplitudeSamples.Count > windowSize)
         {
-            amplitudeSamples.RemoveAt(0); // Remove the oldest value to keep the window size constant
+            amplitudeSamples.RemoveAt(0);
         }
 
-        // Adjust sensitivity and threshold based on the rolling window
         AdjustSensitivityAndThreshold();
 
-        // Check if the amplitude exceeds the threshold and enough time has passed since the last beat
         if (amplitude > threshold && Time.time > lastBeatTime + timeBetweenBeats)
         {
             lastBeatTime = Time.time;
@@ -76,10 +88,67 @@ public class DynamicBeatDetector : MonoBehaviour
         Debug.Log($"Low Freq Max: {lowFreqMax}, Amplitude: {amplitude}, Threshold: {threshold}, Sensitivity: {sensitivity}");
     }
 
+    float[] PerformSTFT(float[] audioData)
+    {
+        int numWindows = (audioData.Length - windowSize) / hopSize + 1;
+        float[] stft = new float[windowSize / 2];
+
+        for (int i = 0; i < numWindows; i++)
+        {
+            float[] window = new float[windowSize];
+            for (int j = 0; j < windowSize; j++)
+            {
+                window[j] = audioData[i * hopSize + j] * MathUtility.HanningWindow(j, windowSize);
+            }
+
+            float[] spectrum = new float[windowSize];
+            FFT(window, ref spectrum);
+
+            for (int k = 0; k < windowSize / 2; k++)
+            {
+                stft[k] += spectrum[k];
+            }
+        }
+
+        return stft.Select(x => x / numWindows).ToArray();
+    }
+
+    void FFT(float[] data, ref float[] spectrum)
+    {
+        int n = data.Length;
+        if (n <= 1)
+        {
+            spectrum[0] = data[0];
+            return;
+        }
+
+        float[] even = new float[n / 2];
+        float[] odd = new float[n / 2];
+
+        for (int i = 0; i < n / 2; i++)
+        {
+            even[i] = data[2 * i];
+            odd[i] = data[2 * i + 1];
+        }
+
+        float[] evenSpectrum = new float[n / 2];
+        float[] oddSpectrum = new float[n / 2];
+
+        FFT(even, ref evenSpectrum);
+        FFT(odd, ref oddSpectrum);
+
+        for (int i = 0; i < n / 2; i++)
+        {
+            float t = Mathf.Exp(-2 * Mathf.PI * i / n) * oddSpectrum[i];
+            spectrum[i] = evenSpectrum[i] + t;
+            spectrum[i + n / 2] = evenSpectrum[i] - t;
+        }
+    }
+
     float[] SmoothSpectrum(float[] spectrum)
     {
         float[] smoothedSpectrum = new float[spectrum.Length];
-        int smoothRange = 3; // Number of neighboring points to average
+        int smoothRange = 3;
 
         for (int i = 0; i < spectrum.Length; i++)
         {
@@ -104,7 +173,6 @@ public class DynamicBeatDetector : MonoBehaviour
 
     void AdjustSensitivityAndThreshold()
     {
-        // Calculate the average amplitude in the rolling window
         float averageAmplitude = 0;
         foreach (float sample in amplitudeSamples)
         {
@@ -112,7 +180,6 @@ public class DynamicBeatDetector : MonoBehaviour
         }
         averageAmplitude /= amplitudeSamples.Count;
 
-        // Calculate the standard deviation of the amplitudes in the rolling window
         float variance = 0;
         foreach (float sample in amplitudeSamples)
         {
@@ -121,20 +188,17 @@ public class DynamicBeatDetector : MonoBehaviour
         variance /= amplitudeSamples.Count;
         float stdDev = Mathf.Sqrt(variance);
 
-        // Set the threshold to be the average amplitude plus one standard deviation
         threshold = averageAmplitude + stdDev;
     }
 
     void OnBeatDetected()
     {
-        // Action when a beat is detected
         Debug.Log("Beat detected!");
         if (Time.time > lastSpawnTime + spawnCooldown)
         {
             SpawnTarget();
             lastSpawnTime = Time.time;
         }
-        // Add additional actions (e.g., trigger animations, particle effects) here
     }
 
     void SpawnTarget()
@@ -169,12 +233,11 @@ public class DynamicBeatDetector : MonoBehaviour
 
     bool IsPositionOccupied(Vector3 position)
     {
-        // Clean up the activeTargets list by removing null references
         activeTargets.RemoveAll(target => target == null);
 
         foreach (GameObject target in activeTargets)
         {
-            if (Vector3.Distance(target.transform.position, position) < 1f) // Adjust the distance as needed
+            if (Vector3.Distance(target.transform.position, position) < 1f)
             {
                 return true;
             }
@@ -201,6 +264,5 @@ public class DynamicBeatDetector : MonoBehaviour
     void GameOver()
     {
         Debug.Log("Game Over!");
-        // Implement game over logic (e.g., stop spawning targets, show game over screen)
     }
 }

@@ -17894,7 +17894,7 @@ Light:
   m_BounceIntensity: 1
   m_ColorTemperature: 6570
   m_UseColorTemperature: 0
-  m_BoundingSphereOverride: {x: 1.02e-43, y: 6e-45, z: 5.349e-42, w: 9.734563e-39}
+  m_BoundingSphereOverride: {x: 9.1835e-41, y: 4.500301e-39, z: 4.545857e-39, w: 0}
   m_UseBoundingSphereOverride: 0
   m_UseViewFrustumForShadowCasterCull: 1
   m_ShadowRadius: 0
@@ -18266,7 +18266,9 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
-    m_RemovedGameObjects: []
+    m_RemovedGameObjects:
+    - {fileID: 8096943569256388460, guid: 65eb6b98091a5734ba9d9ca871cef69a, type: 3}
+    - {fileID: 5038768215742077563, guid: 65eb6b98091a5734ba9d9ca871cef69a, type: 3}
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 65eb6b98091a5734ba9d9ca871cef69a, type: 3}
@@ -22658,14 +22660,60 @@ PrefabInstance:
       value: BeatDetector
       objectReference: {fileID: 0}
     - target: {fileID: 4623777369957736055, guid: d31e9b55d1453924f9af6e3c7769371d, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4623777369957736055, guid: d31e9b55d1453924f9af6e3c7769371d, type: 3}
       propertyPath: spawnArea
       value: 
       objectReference: {fileID: 1806662822}
-    m_RemovedComponents: []
+    - target: {fileID: 7025543783273038088, guid: d31e9b55d1453924f9af6e3c7769371d, type: 3}
+      propertyPath: m_audioClip
+      value: 
+      objectReference: {fileID: 8300000, guid: 19a13a7f37785ce44a930ea3b978a6b0, type: 3}
+    m_RemovedComponents:
+    - {fileID: 4623777369957736055, guid: d31e9b55d1453924f9af6e3c7769371d, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 2198001682716836756, guid: d31e9b55d1453924f9af6e3c7769371d, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 7511582655012693152}
   m_SourcePrefab: {fileID: 100100000, guid: d31e9b55d1453924f9af6e3c7769371d, type: 3}
+--- !u!1 &7511582655012693150 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 2198001682716836756, guid: d31e9b55d1453924f9af6e3c7769371d, type: 3}
+  m_PrefabInstance: {fileID: 7511582655012693149}
+  m_PrefabAsset: {fileID: 0}
+--- !u!82 &7511582655012693151 stripped
+AudioSource:
+  m_CorrespondingSourceObject: {fileID: 7025543783273038088, guid: d31e9b55d1453924f9af6e3c7769371d, type: 3}
+  m_PrefabInstance: {fileID: 7511582655012693149}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &7511582655012693152
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7511582655012693150}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7e2c9004cb093a24b9f313fa049170cb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  audioSource: {fileID: 7511582655012693151}
+  targetPrefab: {fileID: 2951982873633636645, guid: fe7cb8641b1897741accb3cd4cbee276, type: 3}
+  spawnArea: {fileID: 1806662822}
+  spawnCooldown: 0
+  targetLifetime: 3
+  maxSelfDestructs: 3
+  bassLowerLimit: 60
+  bassUpperLimit: 180
+  lowLowerLimit: 500
+  lowUpperLimit: 2000
+  bass: 1
+  low: 1
 --- !u!23 &7718390322663337749
 MeshRenderer:
   m_ObjectHideFlags: 0

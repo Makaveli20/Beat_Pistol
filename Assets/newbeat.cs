@@ -6,7 +6,6 @@ using System.Linq;
 public class BeatDetector : MonoBehaviour
 {
     public AudioSource audioSource;
-
     public GameObject targetPrefab;
     public BoxCollider spawnArea;
     public float spawnCooldown = 1f;
@@ -21,8 +20,8 @@ public class BeatDetector : MonoBehaviour
     private int windowSize = 1024;
     private float samplingFrequency;
 
-    float[] freqSpectrum = new float[4];
-    float[] freqAvgSpectrum = new float[4];
+    float[] freqSpectrum = new float[2];
+    float[] freqAvgSpectrum = new float[2];
 
     public bool bass, low;
 
@@ -43,16 +42,13 @@ public class BeatDetector : MonoBehaviour
     void Awake()
     {
         int bandsize = audioSource.clip.frequency / 1024;
-
         FFTHistory_maxSize = audioSource.clip.frequency / 1024;
 
         beatDetector_bandLimits.Clear();
-
         beatDetector_bandLimits.Add(bassLowerLimit / bandsize);
         beatDetector_bandLimits.Add(bassUpperLimit / bandsize);
         beatDetector_bandLimits.Add(lowLowerLimit / bandsize);
         beatDetector_bandLimits.Add(lowUpperLimit / bandsize);
-
         beatDetector_bandLimits.TrimExcess();
         FFTHistory_beatDetector.Clear();
     }
@@ -69,58 +65,36 @@ public class BeatDetector : MonoBehaviour
     {
         int numBands = 2;
         int numChannels = audioSource.clip.channels;
+        float[] tempSample = new float[1024];
+        audioSource.GetSpectrumData(tempSample, 0, FFTWindow.Rectangular); // Calculate spectrum once
+
         for (int numBand = 0; numBand < numBands; ++numBand)
         {
+            spectrum[numBand] = 0; // Initialize to 0 before accumulation
             for (int indexFFT = beatDetector_bandLimits[numBand]; indexFFT < beatDetector_bandLimits[numBand + 1]; ++indexFFT)
             {
-                for (int channel = 0; channel < numChannels; ++channel)
-                {
-                    float[] tempSample = new float[1024];
-                    audioSource.GetSpectrumData(tempSample, channel, FFTWindow.Rectangular);
-                    spectrum[numBand] += tempSample[indexFFT];
-                }
+                spectrum[numBand] += tempSample[indexFFT];
             }
-            spectrum[numBand] /= (beatDetector_bandLimits[numBand + 1] - beatDetector_bandLimits[numBand] * numBand);
+            spectrum[numBand] /= (beatDetector_bandLimits[numBand + 1] - beatDetector_bandLimits[numBand]);
         }
+
         if (FFTHistory_beatDetector.Count > 0)
         {
             FillAvgSpectrum(ref avgSpectrum, numBands, ref FFTHistory_beatDetector);
 
             float[] varianceSpectrum = new float[numBands];
-
             FillVarianceSpectrum(ref varianceSpectrum, numBands, ref FFTHistory_beatDetector, ref avgSpectrum);
+
             isBass = (spectrum[0]) > BeatThreshold(varianceSpectrum[0]) * avgSpectrum[0];
             isLow = (spectrum[1]) > BeatThreshold(varianceSpectrum[1]) * avgSpectrum[1];
 
             if (isBass || isLow)
             {
-                float amplitude = isBass ? spectrum[0] : spectrum[1];
-                amplitudeSamples.Add(amplitude);
-
-                if (amplitudeSamples.Count > windowSize)
-                {
-                    amplitudeSamples.RemoveAt(0);
-                }
-
-                AdjustSensitivityAndThreshold();
-
-                if (amplitude > threshold && Time.time > lastBeatTime + timeBetweenBeats)
-                {
-                    lastBeatTime = Time.time;
-                    OnBeatDetected();
-                }
-
-                Debug.Log($"Amplitude: {amplitude}, Threshold: {threshold}, Sensitivity: {sensitivity}");
+                HandleBeat(spectrum, isBass);
             }
         }
 
-        List<float> fftResult = new List<float>(numBands);
-
-        for (int index = 0; index < numBands; ++index)
-        {
-            fftResult.Add(spectrum[index]);
-        }
-
+        List<float> fftResult = spectrum.ToList();
         if (FFTHistory_beatDetector.Count >= FFTHistory_maxSize)
         {
             FFTHistory_beatDetector.Dequeue();
@@ -130,6 +104,11 @@ public class BeatDetector : MonoBehaviour
 
     void FillAvgSpectrum(ref float[] avgSpectrum, int numBands, ref Queue<List<float>> fftHistory)
     {
+        for (int index = 0; index < numBands; ++index)
+        {
+            avgSpectrum[index] = 0; // Initialize to 0 before accumulation
+        }
+
         foreach (List<float> fftResult in fftHistory)
         {
             for (int index = 0; index < fftResult.Count; ++index)
@@ -140,23 +119,28 @@ public class BeatDetector : MonoBehaviour
 
         for (int index = 0; index < numBands; ++index)
         {
-            avgSpectrum[index] /= (fftHistory.Count);
+            avgSpectrum[index] /= fftHistory.Count;
         }
     }
 
     void FillVarianceSpectrum(ref float[] varianceSpectrum, int numBands, ref Queue<List<float>> fftHistory, ref float[] avgSpectrum)
     {
+        for (int index = 0; index < numBands; ++index)
+        {
+            varianceSpectrum[index] = 0; // Initialize to 0 before accumulation
+        }
+
         foreach (List<float> fftResult in fftHistory)
         {
             for (int index = 0; index < fftResult.Count; ++index)
             {
-                varianceSpectrum[index] += (fftResult[index] - avgSpectrum[index]) * (fftResult[index] - avgSpectrum[index]);
+                varianceSpectrum[index] += Mathf.Pow(fftResult[index] - avgSpectrum[index], 2);
             }
         }
 
         for (int index = 0; index < numBands; ++index)
         {
-            varianceSpectrum[index] /= (fftHistory.Count);
+            varianceSpectrum[index] /= fftHistory.Count;
         }
     }
 
@@ -177,22 +161,32 @@ public class BeatDetector : MonoBehaviour
 
     void AdjustSensitivityAndThreshold()
     {
-        float averageAmplitude = 0;
-        foreach (float sample in amplitudeSamples)
-        {
-            averageAmplitude += sample;
-        }
-        averageAmplitude /= amplitudeSamples.Count;
-
-        float variance = 0;
-        foreach (float sample in amplitudeSamples)
-        {
-            variance += Mathf.Pow(sample - averageAmplitude, 2);
-        }
-        variance /= amplitudeSamples.Count;
+        float averageAmplitude = amplitudeSamples.Average();
+        float variance = amplitudeSamples.Select(sample => Mathf.Pow(sample - averageAmplitude, 2)).Average();
         float stdDev = Mathf.Sqrt(variance);
 
         threshold = averageAmplitude + stdDev;
+    }
+
+    void HandleBeat(float[] spectrum, bool isBass)
+    {
+        float amplitude = isBass ? spectrum[0] : spectrum[1];
+        amplitudeSamples.Add(amplitude);
+
+        if (amplitudeSamples.Count > windowSize)
+        {
+            amplitudeSamples.RemoveAt(0);
+        }
+
+        AdjustSensitivityAndThreshold();
+
+        if (amplitude > threshold && Time.time > lastBeatTime + timeBetweenBeats)
+        {
+            lastBeatTime = Time.time;
+            OnBeatDetected();
+        }
+
+        Debug.Log($"Amplitude: {amplitude}, Threshold: {threshold}, Sensitivity: {sensitivity}");
     }
 
     void OnBeatDetected()
@@ -209,20 +203,18 @@ public class BeatDetector : MonoBehaviour
     {
         if (targetPrefab && spawnArea)
         {
-            Vector3 randomPosition = GetRandomPositionInArea();
-            Debug.Log("Attempting to spawn target at position: " + randomPosition);
-
-            if (!IsPositionOccupied(randomPosition))
+            for (int attempts = 0; attempts < 10; attempts++) // Try up to 10 times to find a free spot
             {
-                GameObject target = Instantiate(targetPrefab, randomPosition, Quaternion.identity);
-                activeTargets.Add(target);
-                StartCoroutine(DestroyTargetAfterTime(target, targetLifetime));
-                Debug.Log("Target spawned at position: " + randomPosition);
+                Vector3 spawnPosition = GetRandomPositionInArea();
+                if (!IsPositionOccupied(spawnPosition))
+                {
+                    GameObject target = Instantiate(targetPrefab, spawnPosition, Quaternion.identity);
+                    activeTargets.Add(target);
+                    StartCoroutine(DestroyTargetAfterTime(target, targetLifetime));
+                    return;
+                }
             }
-            else
-            {
-                Debug.Log("Position occupied, cannot spawn target at position: " + randomPosition);
-            }
+            Debug.Log("No available spawn points found.");
         }
         else
         {
@@ -247,7 +239,7 @@ public class BeatDetector : MonoBehaviour
 
         foreach (GameObject target in activeTargets)
         {
-            if (Vector3.Distance(target.transform.position, position) < 1f)
+            if (Vector3.Distance(target.transform.position, position) < 1f) // Adjust the distance threshold as needed
             {
                 return true;
             }
@@ -274,5 +266,6 @@ public class BeatDetector : MonoBehaviour
     void GameOver()
     {
         Debug.Log("Game Over!");
+        // Add your game over logic here
     }
 }

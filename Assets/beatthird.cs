@@ -1,9 +1,8 @@
+using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
-using UnityEngine;
-using System.Linq;
 
-public class BeatDetector : MonoBehaviour
+public class SimpleBeatDetection : MonoBehaviour
 {
     public AudioSource audioSource;
     public GameObject targetPrefab;
@@ -12,84 +11,49 @@ public class BeatDetector : MonoBehaviour
     public float targetLifetime = 3f;
     public int maxSelfDestructs = 3;
 
-    public int bassLowerLimit = 60;
-    public int bassUpperLimit = 180;
-    public int lowLowerLimit = 500;
-    public int lowUpperLimit = 2000;
+    public delegate void OnBeatHandler();
+    public event OnBeatHandler OnBeat;
 
-    private int windowSize = 1024;
-    private float samplingFrequency;
+    private float[] samples0Channel;
+    private float[] samples1Channel;
+    private float[] historyBuffer;
 
-    private float[] spectrum;
-    private float[] avgSpectrum;
-    private float threshold;
+    public int bufferSize = 1024;
+    public FFTWindow FFTWindow = FFTWindow.BlackmanHarris;
+
     private List<GameObject> activeTargets = new List<GameObject>();
     private int selfDestructCount = 0;
-    private float lastBeatTime;
     private float lastSpawnTime;
-    private float timeBetweenBeats = 0.2f;
-    private Queue<float> recentAmplitudes = new Queue<float>();
 
     void Start()
     {
-        spectrum = new float[windowSize];
-        avgSpectrum = new float[windowSize];
-        samplingFrequency = AudioSettings.outputSampleRate;
-
-        audioSource.Play();
+        samples0Channel = new float[bufferSize];
+        samples1Channel = new float[bufferSize];
+        historyBuffer = new float[43];
+        OnBeat += HandleOnBeat;
     }
 
     void Update()
     {
-        if (audioSource.isPlaying)
+        float instantEnergy = GetInstantEnergy();
+        float localAverageEnergy = GetLocalAverageEnergy();
+        float varianceEnergies = ComputeVariance(localAverageEnergy);
+        double constantC = (-0.0025714 * varianceEnergies) + 1.5142857;
+
+        float[] shiftedHistoryBuffer = ShiftArray(historyBuffer, 1);
+        shiftedHistoryBuffer[0] = instantEnergy;
+        OverrideElementsToAnotherArray(shiftedHistoryBuffer, historyBuffer);
+
+        if (instantEnergy > constantC * localAverageEnergy)
         {
-            GetSpectrumData();
-            DetectBeats();
+            OnBeat?.Invoke();
         }
     }
 
-    void GetSpectrumData()
-    {
-        audioSource.GetSpectrumData(spectrum, 0, FFTWindow.Hamming);
-    }
-
-    void DetectBeats()
-    {
-        float lowFreqMax = 0;
-        int lowFreqEnd = Mathf.FloorToInt((lowUpperLimit / samplingFrequency) * windowSize);
-
-        for (int i = 0; i < lowFreqEnd; i++)
-        {
-            if (spectrum[i] > lowFreqMax)
-            {
-                lowFreqMax = spectrum[i];
-            }
-        }
-
-        float amplitude = lowFreqMax;
-        recentAmplitudes.Enqueue(amplitude);
-
-        if (recentAmplitudes.Count > 100)
-        {
-            recentAmplitudes.Dequeue();
-        }
-
-        float averageAmplitude = recentAmplitudes.Average();
-        float variance = recentAmplitudes.Select(a => Mathf.Pow(a - averageAmplitude, 2)).Average();
-        float stdDev = Mathf.Sqrt(variance);
-
-        threshold = averageAmplitude + stdDev * 1.5f;
-
-        if (amplitude > threshold && Time.time > lastBeatTime + timeBetweenBeats)
-        {
-            lastBeatTime = Time.time;
-            OnBeatDetected();
-        }
-    }
-
-    void OnBeatDetected()
+    private void HandleOnBeat()
     {
         Debug.Log("Beat detected!");
+
         if (Time.time > lastSpawnTime + spawnCooldown)
         {
             SpawnTarget();
@@ -163,4 +127,64 @@ public class BeatDetector : MonoBehaviour
     {
         Debug.Log("Game Over!");
     }
+
+    #region FOR_SIMPLE_ALGORITHM_USE
+    public float GetInstantEnergy()
+    {
+        float result = 0;
+        audioSource.GetSpectrumData(samples0Channel, 0, FFTWindow);
+        audioSource.GetSpectrumData(samples1Channel, 1, FFTWindow);
+
+        for (int i = 0; i < bufferSize; i++)
+        {
+            result += Mathf.Pow(samples0Channel[i], 2) + Mathf.Pow(samples1Channel[i], 2);
+        }
+
+        return result;
+    }
+
+    private float GetLocalAverageEnergy()
+    {
+        float result = 0;
+
+        for (int i = 0; i < historyBuffer.Length; i++)
+        {
+            result += historyBuffer[i];
+        }
+
+        return result / historyBuffer.Length;
+    }
+
+    private float ComputeVariance(float averageEnergy)
+    {
+        float result = 0;
+
+        for (int i = 0; i < historyBuffer.Length; i++)
+        {
+            result += Mathf.Pow(historyBuffer[i] - averageEnergy, 2);
+        }
+
+        return result / historyBuffer.Length;
+    }
+    #endregion
+
+    #region UTILITY_USE
+    private void OverrideElementsToAnotherArray(float[] from, float[] to)
+    {
+        for (int i = 0; i < from.Length; i++)
+        {
+            to[i] = from[i];
+        }
+    }
+
+    private float[] ShiftArray(float[] array, int amount)
+    {
+        float[] result = new float[array.Length];
+        for (int i = 0; i < array.Length - amount; i++)
+        {
+            result[i + amount] = array[i];
+        }
+        return result;
+    }
+    #endregion
 }

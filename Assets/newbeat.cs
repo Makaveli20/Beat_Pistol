@@ -255,11 +255,15 @@ public class BeatDetector : MonoBehaviour
         {
             activeTargets.Remove(target);
             Destroy(target);
+
             selfDestructCount++;
             if (selfDestructCount >= maxSelfDestructs)
             {
                 GameOver();
             }
+
+            // Decrease score when a target destroys itself
+            ScoreManager.Instance.AddScore(-5);
         }
     }
 

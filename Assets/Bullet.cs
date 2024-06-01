@@ -2,7 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class Bullet : MonoBehaviour
+/*public class Bullet : MonoBehaviour
 {
     public float destroyAfterSeconds = 5f; // Time after which the bullet is destroyed automatically
     private SimpleShoot gunScript; // Reference to the shooting script to update the score
@@ -25,4 +25,4 @@ public class Bullet : MonoBehaviour
             }
         }
     }
-}
+}*/

@@ -22,7 +22,6 @@ public class SimpleShoot : MonoBehaviour
     public InputActionProperty shooting;
     public LineRenderer lineRenderer; // Reference to the LineRenderer component
     public AudioSource shootingAudioSource;
-    private int score = 0; // Player's score
 
     void Start()
     {
@@ -71,7 +70,7 @@ public class SimpleShoot : MonoBehaviour
             if (hit.collider.CompareTag("Target"))
             {
                 Destroy(hit.collider.gameObject); // Destroy the target
-                AddScore(10); // Add points to the score
+                ScoreManager.Instance.AddScore(10); // Add points to the score
             }
         }
 
@@ -95,11 +94,5 @@ public class SimpleShoot : MonoBehaviour
             endPosition = hit.point;
         }
         lineRenderer.SetPosition(1, endPosition);
-    }
-
-    public void AddScore(int points)
-    {
-        score += points;
-        Debug.Log("Score: " + score);
     }
 }
